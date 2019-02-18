@@ -111,11 +111,15 @@ def load_dict(dict_path):
     return dictionary
 
 
-def is_eos(w):
+def is_eos(w, v, i):
     """
     EOSを判定する
     """
-    return w == '。' or w == '|' or w == '，' or w == ':'
+    if len(v) > i + 2:
+        # 項目 : 値 スキーマの処理
+        if v[i+2] == ':':
+            return True
+    return w == '。' or w == '|' or w == '，'
 
 
 def get_word(dictionary, line):
@@ -134,7 +138,7 @@ def get_word(dictionary, line):
         # 文の終わりなら3をいれる
         w = line[i]
         # 文の終わりを検出
-        if is_eos(w):
+        if is_eos(w, line, i):
             words.append(3)
             words.append(1)
         i += 1
@@ -225,6 +229,19 @@ def load_data(data_params, max_len, vocab_size):
     return (x_train, y_train_data), (x_test, y_test_data), dictionary.token2id
 
 
+def load_label_data(dictname):
+    """
+    ラベルをロードする
+    """
+    labels = []
+    with open(dictname, 'r', encoding="cp932") as f:
+        for line in f:
+            line = line.translate(str.maketrans({'\n': None, '"': None}))
+            ws = line.split(',')
+            labels.append(ws[0])
+    return labels
+
+
 def load_reuters_data(vocab_size):
     INDEX_FROM = 3
     train_set, test_set = reuters.load_data(
@@ -291,4 +308,4 @@ def load_data_set(data_params, type, max_len, vocab_size, batch_size):
     train_loader = data_utils.DataLoader(
         train_data, batch_size=batch_size, drop_last=True)
 
-    return train_loader, train_set, test_set, x_test_pad, y_test, word_to_id
+    return train_loader, train_set, test_set, x_train_pad, x_test_pad, word_to_id

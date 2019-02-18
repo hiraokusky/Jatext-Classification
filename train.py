@@ -13,14 +13,11 @@ import os
 import sys
 import json
 
-from input.data_loader import load_data_set
+from input.data_loader import load_data_set, load_label_data
 
 import argparse
 
 classified = False
-# classification_type = sys.argv[1]
-classification_type = 'multiclass'
-
 
 def json_to_dict(json_set):
     for k, v in json_set.items():
@@ -55,8 +52,8 @@ parser.add_argument("-d", "--dict_txt", type=str,
                     help="dict_txt")
 parser.add_argument("-s", "--syns_csv", type=str,
                     help="syns_csv")
-parser.add_argument("-n", "--num_visuals", type=int,
-                    help="num_visuals")
+parser.add_argument("-l", "--labels_csv", type=str,
+                    help="labels_csv")
 
 parser.add_argument('-v', '--verbose', action='store_true')
 args = parser.parse_args()
@@ -65,21 +62,19 @@ if args.data_csv != None and len(args.data_csv) > 0:
     data_params['data_csv'] = args.data_csv
 else:
     data_params['data_csv'] = 'data.csv'
-
-if args.dict_txt != None and len(args.dict_txt) > 0:
-    data_params['dict_txt'] = args.dict_txt
+if args.labels_csv != None and len(args.labels_csv) > 0:
+    data_params['labels_csv'] = args.labels_csv
 else:
-    data_params['dict_txt'] = 'dict.txt'
-
+    data_params['labels_csv'] = 'labels.csv'
 if args.syns_csv != None and len(args.syns_csv) > 0:
     data_params['syns_csv'] = args.syns_csv
 else:
     data_params['syns_csv'] = ''
 
-if args.num_visuals != None:
-    params_set['num_visuals'] = args.num_visuals
+if args.dict_txt != None and len(args.dict_txt) > 0:
+    data_params['dict_txt'] = args.dict_txt
 else:
-    params_set['num_visuals'] = 0
+    data_params['dict_txt'] = 'dict.txt'
 
 params_set['verbose'] = args.verbose
 
@@ -88,8 +83,14 @@ print("data :", data_params)
 print("param:", params_set)
 print("model:", model_params)
 
+# classification_type = sys.argv[1]
+classification_type = 'multiclass'
+if model_params["num_classes"] <= 2:
+    classification_type = 'binary'
 
 def visualize_attention(attention_model, wts, x_test_pad, word_to_id, y_test, filename):
+    labels = load_label_data(data_params['labels_csv'])
+
     wts_add = torch.sum(wts, 1)
     wts_add_np = wts_add.data.numpy()
     wts_add_list = wts_add_np.tolist()
@@ -112,13 +113,13 @@ def visualize_attention(attention_model, wts, x_test_pad, word_to_id, y_test, fi
         ys = ''
         m = 0
         for y in yy:
-            ys += ' ' + str(y[1])
             m += 1
+            ys += ' ' + str(m) + ':' + labels[y[1]]
             if m > 5:
                 break
 
         text.append(" ".join([id_to_word.get(i) for i in test]
-                             ) + " fact:" + str(y_test[n]) + " pred:" + ys)
+                             ) + " fact:" + labels[y_test[n]] + " pred:" + ys)
         n += 1
 
     # print(text[0])
@@ -167,7 +168,7 @@ if classification_type == 'binary':
 
 if classification_type == 'multiclass':
 
-    train_loader, train_set, test_set, x_test_pad, y_test, word_to_id = load_data_set(
+    train_loader, train_set, test_set, x_train_pad, x_test_pad, word_to_id = load_data_set(
         data_params, 1, MAXLENGTH, model_params["vocab_size"], model_params['batch_size'])
 
     # Using pretrained embeddings
@@ -189,11 +190,15 @@ if classification_type == 'multiclass':
 
 if classified:
     print('\nVisualizing...')
-    test_last_idx = params_set['num_visuals']
 
     wts = get_activation_wts(attention_model, Variable(
-        torch.from_numpy(x_test_pad[:test_last_idx]).type(torch.LongTensor)))
+        torch.from_numpy(x_train_pad[:]).type(torch.LongTensor)))
     print(wts.size())
-
     visualize_attention(
-        attention_model, wts, x_test_pad[:test_last_idx], word_to_id, y_test, filename='attention.html')
+        attention_model, wts, x_train_pad[:], word_to_id, train_set[1], filename='train_attention.html')
+
+    wts = get_activation_wts(attention_model, Variable(
+        torch.from_numpy(x_test_pad[:]).type(torch.LongTensor)))
+    print(wts.size())
+    visualize_attention(
+        attention_model, wts, x_test_pad[:], word_to_id, test_set[1], filename='test_attention.html')
