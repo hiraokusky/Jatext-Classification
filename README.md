@@ -37,6 +37,7 @@ fork元の実装通り、注意された単語を可視化したHTMLファイル
 
 分類とテキストを記載したファイルです。
 データに応じて、以下のパラメータを調整してください。
+
 batch_size, vocab_size, timesteps, num_classes
 
 フォーマット: ヘッダー無し
