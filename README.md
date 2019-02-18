@@ -1,38 +1,88 @@
-# Structured Self-attentive sentence embeddings 
-Implementation for the paper A Structured Self-Attentive Sentence Embedding, which was published in ICLR 2017: https://arxiv.org/abs/1703.03130 .
-#### USAGE:
-For binary sentiment classification on imdb dataset run :
-`python classification.py "binary"`
+# Jatext Classificator
 
-For multiclass classification on reuters dataset run :
-`python classification.py "multiclass"`
+日本語テキストの分類を実行するツールです。
 
-You can change the model parameters in the `model_params.json file`
-Other tranining parameters like number of attention hops etc can be configured in the `config.json` file.
+## 対応している分類器
 
-If you want to use pretrained glove embeddings , set the `use_embeddings` parameter to `"True"` ,default is set to False. Do not forget to download the `glove.6B.50d.txt` and place it in the glove folder.
+### Structured Self-attentive sentence embeddings
 
+Bi-LSTMと注意機構でテキストを分類します。
+二項分類と多項分類に対応しています。
 
+* More detail
 
-#### Implemented:
-* Classification using self attention
-* Regularization using Frobenius norm
-* Gradient clipping
-* Visualizing the attention weights
+  https://github.com/kaushalshetty/Structured-Self-Attention
 
-Instead of pruning ,used averaging over the sentence embeddings.
+## 使い方
 
-#### Visualization:
-After training, the model is tested on 100 test points. Attention weights for the 100 test data are retrieved and used to visualize over the text using heatmaps. A file visualization.html gets saved in the visualization/ folder after successful training. The visualization code was provided by Zhouhan Lin (@hantek). Many thanks.
+### Train
 
+```
+python train.py --data_csv 学習データファイルのパス [--dict_txt キャッシュ辞書データファイルのパス]
+```
 
-Below is a shot of the visualization on few datapoints.
-![alt text](https://github.com/kaushalshetty/Structured-Self-Attention/blob/master/visualization/attention.png "Attention Visualization")
+### Predict
 
+T.B.D.
 
+### Visualize
 
-Training accuracy 93.4%
-Tested on 1000 points with 90.2% accuracy
+attention.htmlをブラウザで開きます。
 
----
+## 学習データ
+
+フォーマット: ヘッダー無し
+```
+分類番号, テキスト
+```
+
+例:
+```
+1, 今日はいい天気ですね。
+2, 調子が悪くなった。
+```
+
+## config.json
+
+	"epochs":2,
+	"use_regularization":"True",
+	"C":0.03,
+	"clip":"True",
+	"use_embeddings":"False",
+	"attention_hops":10
+
+* epochs
+
+  学習の回数です。
+
+## model_params.json
+
+	"batch_size":16,
+	"vocab_size":20000,
+	"timesteps":200,
+	"lstm_hidden_dimension":50,
+	"d_a":100,
+	"num_classes": 112
+
+* batch_size
+
+  バッチサイズです。
+  データ数より小さくなくてはいけません。
+
+* vocab_size
+
+  扱う単語の種類数です。
+
+* timesteps
+
+  1テキストで扱う単語の数です。
+
+* num_classes
+
+  分類するクラス数です。
+  data_csvファイルの分類数と同じでないといけません。
+
+* lstm_hidden_dimension
+
+  LSTMの隠れ層の次元数です。
 

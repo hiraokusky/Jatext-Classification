@@ -1,6 +1,6 @@
 {
 	
-	"epochs":2,
+	"epochs":10,
 	"use_regularization":"True",
 	"C":0.03,
 	"clip":"True",
