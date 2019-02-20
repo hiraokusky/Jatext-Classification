@@ -242,7 +242,7 @@ def load_label_data(dictname):
     return labels
 
 
-def load_reuters_data(vocab_size):
+def load_reuters_data(data_params, max_len, vocab_size):
     INDEX_FROM = 3
     train_set, test_set = reuters.load_data(
         path="reuters.npz", num_words=vocab_size, skip_top=0, index_from=INDEX_FROM)

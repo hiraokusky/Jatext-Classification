@@ -6,12 +6,10 @@
 
 ### Structured Self-attentive sentence embeddings
 
+https://github.com/kaushalshetty/Structured-Self-Attention
+
 * Bi-LSTMと注意機構でテキストを分類します。
 * 二項分類と多項分類に対応しています。(Jatext-Classificatorではまだ多項分類にしか対応していません）
-
-* More detail
-
-  https://github.com/kaushalshetty/Structured-Self-Attention
 
 ## 使い方
 
@@ -30,8 +28,9 @@ T.B.D.
 
 ### Visualize
 
-* fork元の実装通り、注意された単語を可視化したHTMLファイルattention.htmlを生成します。
-* 検証データの中から、num_visualsで指定した件数分を表示します。
+* fork元の実装通り、注意された単語を可視化したHTMLファイルをvisualization/attentionフォルダに生成します。
+* 全結果を20個ごとに1つのHTMLファイルに出力します。
+* 注意結果に合わせて、ラベルと予測結果の候補を5件表示します。
 
 ## 入力データファイル
 

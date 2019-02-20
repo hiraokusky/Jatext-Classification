@@ -19,6 +19,7 @@ import argparse
 
 classified = False
 
+
 def json_to_dict(json_set):
     for k, v in json_set.items():
         if v == 'False':
@@ -88,14 +89,20 @@ classification_type = 'multiclass'
 if model_params["num_classes"] <= 2:
     classification_type = 'binary'
 
+
 def visualize_attention(attention_model, wts, x_test_pad, word_to_id, y_test, filename):
+    print(filename, "{} samples".format(len(x_test_pad)))
+
     labels = load_label_data(data_params['labels_csv'])
 
     wts_add = torch.sum(wts, 1)
     wts_add_np = wts_add.data.numpy()
     wts_add_list = wts_add_np.tolist()
     id_to_word = {v: k for k, v in word_to_id.items()}
+    result = []
     text = []
+    correct = 0
+    correct2 = 0
     n = 0
     for test in x_test_pad:
         attention_model.batch_size = 1
@@ -110,23 +117,43 @@ def visualize_attention(attention_model, wts, x_test_pad, word_to_id, y_test, fi
             dic[x] = m
             m += 1
         yy = sorted(dic.items(), reverse=True)
-        ys = ''
         m = 0
+        pred = []
         for y in yy:
             m += 1
-            ys += ' ' + str(m) + ':' + labels[y[1]]
+            l = str(y[1])
+            if len(labels) > 0:
+                l = labels[y[1]]
+            pred.append(l)
             if m > 5:
                 break
 
-        text.append(" ".join([id_to_word.get(i) for i in test]
-                             ) + " fact:" + labels[y_test[n]] + " pred:" + ys)
+        l = str(y_test[n])
+        if len(labels) > 0:
+            l = labels[y_test[n]]
+
+        if l == pred[0]:
+            correct += 1
+        for r in pred:
+            if l == r:
+                correct2 += 1
+                break
+
+        text.append(" ".join([id_to_word.get(i) for i in test]))
+        result.append([l, pred[0], pred])
         n += 1
 
     # print(text[0])
 
-    createHTML(text, wts_add_list, filename)
-    print("Attention visualization created for {} samples".format(len(x_test_pad)))
-    return
+    # 20個ずつhtmlに出力
+    m = 20
+    n = len(result)
+    for i in range(0, n, m):
+        j = i + m
+        createHTML(result[i:j], text[i:j], wts_add_list[i:j],
+                   filename + '_' + str(i + 1) + '_' + str(j) + '.html')
+
+    return (correct, correct2, result)
 
 
 def binary_classfication(attention_model, train_loader, epochs=5, use_regularization=True, C=1.0, clip=True):
@@ -194,11 +221,33 @@ if classified:
     wts = get_activation_wts(attention_model, Variable(
         torch.from_numpy(x_train_pad[:]).type(torch.LongTensor)))
     print(wts.size())
-    visualize_attention(
-        attention_model, wts, x_train_pad[:], word_to_id, train_set[1], filename='train_attention.html')
+    (train_corrent, train_corrent2, train_result) = visualize_attention(
+        attention_model, wts, x_train_pad[:], word_to_id, train_set[1], filename='train_attention')
 
     wts = get_activation_wts(attention_model, Variable(
         torch.from_numpy(x_test_pad[:]).type(torch.LongTensor)))
     print(wts.size())
-    visualize_attention(
-        attention_model, wts, x_test_pad[:], word_to_id, test_set[1], filename='test_attention.html')
+    (test_corrent, test_corrent2, test_result) = visualize_attention(
+        attention_model, wts, x_test_pad[:], word_to_id, test_set[1], filename='test_attention')
+
+    print('Result: train')
+    for r in train_result:
+        print(r[0] == r[1], r[0] in r[2], r[0], r[2]
+              [0], r[2][1], r[2][2], r[2][3], r[2][4])
+
+    print('Result: test')
+    for r in test_result:
+        print(r[0] == r[1], r[0] in r[2], r[0], r[2]
+              [0], r[2][1], r[2][2], r[2][3], r[2][4])
+
+    print('Correct:')
+    print('test  acc:', test_corrent / len(x_test_pad[:]))
+    print('train acc:', train_corrent / len(x_train_pad[:]))
+    print('total acc:', (train_corrent + test_corrent) /
+          (len(x_train_pad[:]) + len(x_test_pad[:])))
+
+    print('In 5th:')
+    print('test  acc:', test_corrent2 / len(x_test_pad[:]))
+    print('train acc:', train_corrent2 / len(x_train_pad[:]))
+    print('total acc:', (train_corrent2 + test_corrent2) /
+          (len(x_train_pad[:]) + len(x_test_pad[:])))
