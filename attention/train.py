@@ -99,6 +99,14 @@ def train(params_set, attention_model, train_loader, criterion, optimizer, epoch
     return losses, accuracy
 
 
+def predict(attention_model, x_test):
+    attention_model.batch_size = x_test.shape[0]
+    attention_model.hidden_state = attention_model.init_hidden()
+    x_test_var = Variable(torch.from_numpy(x_test).type(torch.LongTensor))
+    y_test_pred, _ = attention_model(x_test_var)
+    return y_test_pred
+
+
 def evaluate(attention_model, x_test, y_test):
     """
         cv results

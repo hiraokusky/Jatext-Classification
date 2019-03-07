@@ -1,6 +1,6 @@
 # You can write your own classification file to use the module
 from attention.model import StructuredSelfAttention
-from attention.train import train, get_activation_wts, evaluate
+from attention.train import train, get_activation_wts, evaluate, predict
 from utils.pretrained_glove_embeddings import load_glove_embeddings
 from visualization.attention_visualization import createHTML
 import torch
@@ -12,13 +12,21 @@ import torch.utils.data as data_utils
 import os
 import sys
 import json
+import csv
+import glob
 
 from input.data_loader import load_data_set, load_label_data
 
 import argparse
 
+print('start')
+
+do_train = True
+do_classify = True
+
 classified = False
 
+PATH = 'db/jc.model'
 
 def json_to_dict(json_set):
     for k, v in json_set.items():
@@ -89,8 +97,7 @@ classification_type = 'multiclass'
 if model_params["num_classes"] <= 2:
     classification_type = 'binary'
 
-
-def visualize_attention(attention_model, wts, x_test_pad, word_to_id, y_test, filename):
+def visualize_attention(attention_model, wts, x_test_pad, word_to_id, word_to_word, y_test, filename):
     print(filename, "{} samples".format(len(x_test_pad)))
 
     labels = load_label_data(data_params['labels_csv'])
@@ -98,7 +105,7 @@ def visualize_attention(attention_model, wts, x_test_pad, word_to_id, y_test, fi
     wts_add = torch.sum(wts, 1)
     wts_add_np = wts_add.data.numpy()
     wts_add_list = wts_add_np.tolist()
-    id_to_word = {v: k for k, v in word_to_id.items()}
+    id_to_word = {v: word_to_word[k] for k, v in word_to_id.items()}
     result = []
     text = []
     correct = 0
@@ -171,10 +178,30 @@ def multiclass_classification(attention_model, train_loader, epochs=5, use_regul
 
 
 MAXLENGTH = model_params['timesteps']
-if classification_type == 'binary':
 
-    train_loader, x_test_pad, y_test, word_to_id = load_data_set(
-        data_params, 0, MAXLENGTH, model_params["vocab_size"], model_params['batch_size'])  # loading imdb dataset
+# データをロード
+num = 10
+min_len = 200
+
+data_path = data_params['data_csv']
+full_dataset = []
+with open(data_path, 'r', encoding="cp932") as f:
+    reader = csv.reader(f)
+    i = 0
+    for line in reader:
+        if len(line) > 0 and len(line[1]) > min_len:
+            full_dataset.append(line)
+        else:
+            print(len(line[1]))
+        i += 1
+
+        # if i >= num:
+        #     break
+
+if do_train and classification_type == 'binary':
+
+    train_loader, x_test_pad, y_test, word_to_id, word_to_word = load_data_set(
+        full_dataset, data_params, 0, MAXLENGTH, model_params["vocab_size"], model_params['batch_size'])  # loading imdb dataset
 
     if params_set["use_embeddings"]:
         embeddings = load_glove_embeddings(
@@ -193,10 +220,10 @@ if classification_type == 'binary':
     #print("Attention weights for the testing data in binary classification are:",wts)
 
 
-if classification_type == 'multiclass':
+if do_train and classification_type == 'multiclass':
 
-    train_loader, train_set, test_set, x_train_pad, x_test_pad, word_to_id = load_data_set(
-        data_params, 1, MAXLENGTH, model_params["vocab_size"], model_params['batch_size'])
+    train_loader, train_set, test_set, x_train_pad, x_test_pad, word_to_id, word_to_word = load_data_set(
+        full_dataset, data_params, 1, MAXLENGTH, model_params["vocab_size"], model_params['batch_size'])
 
     # Using pretrained embeddings
     if params_set["use_embeddings"]:
@@ -215,20 +242,26 @@ if classification_type == 'multiclass':
     #wts = get_activation_wts(multiclass_attention_model,Variable(torch.from_numpy(x_test_pad[:]).type(torch.LongTensor)))
     #print("Attention weights for the data in multiclass classification are:",wts)
 
-if classified:
+    torch.save(attention_model.state_dict(), PATH)
+
+if do_classify and classified:
     print('\nVisualizing...')
 
+    files = glob.glob("visualization/attention/*")
+    for file in files:
+        os.remove(file)
+        
     wts = get_activation_wts(attention_model, Variable(
         torch.from_numpy(x_train_pad[:]).type(torch.LongTensor)))
     print(wts.size())
     (train_corrent, train_corrent2, train_result) = visualize_attention(
-        attention_model, wts, x_train_pad[:], word_to_id, train_set[1], filename='train_attention')
+        attention_model, wts, x_train_pad[:], word_to_id, word_to_word, train_set[1], filename='train_attention')
 
     wts = get_activation_wts(attention_model, Variable(
         torch.from_numpy(x_test_pad[:]).type(torch.LongTensor)))
     print(wts.size())
     (test_corrent, test_corrent2, test_result) = visualize_attention(
-        attention_model, wts, x_test_pad[:], word_to_id, test_set[1], filename='test_attention')
+        attention_model, wts, x_test_pad[:], word_to_id, word_to_word, test_set[1], filename='test_attention')
 
     print('Result: train')
     for r in train_result:

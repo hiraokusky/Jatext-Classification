@@ -19,7 +19,7 @@ import torch.utils.data as data_utils
 
 import janome.tokenizer
 
-janomet = janome.tokenizer.Tokenizer()
+janomet = janome.tokenizer.Tokenizer(mmap=True)
 
 
 def format_word(word):
@@ -76,22 +76,68 @@ def match_syns(s, synonyms):
     return s
 
 
+def is_separater(w):
+    return w == '。' # or w == '|' or w == '，' or w == ' '
+
+novalues = [
+    'しない',
+    'ない',
+    '無し',
+    'なし',
+    'ない',
+    '-/-',
+    '-',
+    '(-/-)',
+    '(-)',
+    '陰性',
+    '低い',
+    '低下',
+    '不能',
+    'せず'
+]
+
+def is_negative(w):
+    if w in novalues:
+        return True
+    return False
+
+
 def get_tokens(line, synonyms):
     """
     テキストをトークン化する
     """
     line = format_word(line)
     tokens = []
+    orgs = []
     for node in janomet.tokenize(line):
-        part = node.part_of_speech.split(',')[0]
+        parts = node.part_of_speech.split(',')
+        part = parts[0]
         t = ''
-        if part in ['名詞']:
+        s = node.surface
+        # print(node)
+        if is_negative(node.base_form):
+            t = 'ない'
+        elif node.surface == ':':
+            t = ':'
+        elif parts[1] in ['数']: # or parts[1] in ['固有名詞']:
+            t = ''
+        elif part in ['名詞']:
             t = match_syns(node.surface, synonyms)
-        elif part in ['動詞', '副詞', '形容詞']:
+        elif part in ['動詞', '形容詞', '副詞']:
             t = match_syns(node.base_form, synonyms)
+        elif parts[1] in ['空白']:
+            t = '。'
+        # elif part in ['接続詞']:
+        #     t = '。'
+        # elif part in ['助詞'] and parts[1] in ['接続助詞']:
+        #     t = '。'
+        
         if len(t) > 0:
             tokens.append(t)
-    return tokens
+            orgs.append(s)
+    
+    # orgsには元の文字列が入る
+    return (tokens, orgs)
 
 
 def get_dict(dict_path, words):
@@ -119,35 +165,49 @@ def is_eos(w, v, i):
         # 項目 : 値 スキーマの処理
         if v[i+2] == ':':
             return True
-    return w == '。' or w == '|' or w == '，'
+    return is_separater(w)
 
 
 def get_word(dictionary, line):
     """
     1行のトークンリストをIDリストにする
     """
+    # 2個以上出現した単語だけを利用
+    # 出現文書数≥指定値(3), 出現文書数/全文書数≤指定値(100%)
+    dictionary.filter_extremes(no_below=3, no_above=1.0)
     vec = dictionary.doc2idx(line, unknown_word_index=2)
     # word_to_id["<PAD>"] = 0
     # word_to_id["<START>"] = 1
     # word_to_id["<UNK>"] = 2
     # word_to_id['<EOS>'] = 3
+    dwords = [1]
     words = [1]
+    dst = []
+    src = ['<START>']
     i = 0
     for a in vec:
-        words.append(a)
-        # 文の終わりなら3をいれる
         w = line[i]
+        if not is_separater(w):
+            words.append(a)
+            src.append(w)
         # 文の終わりを検出
         if is_eos(w, line, i):
-            words.append(3)
-            words.append(1)
+            if len(words) > 1:
+                words.append(3)
+                dwords.extend(words)
+                src.append('<EOS>')
+                dst.extend(src)
+            words = [1]
+            src = ['<START>']
         i += 1
     words.append(3)
-    return words
+    dwords.extend(words)
+    src.append('<EOS>')
+    dst.extend(src)
+    return (dwords, dst)
 
 
-def load_data(data_params, max_len, vocab_size):
-    data_path = data_params['data_csv']
+def load_data(full_dataset, data_params, max_len, vocab_size, predict=False):
     dict_path = data_params['dict_txt']
     syns_path = data_params['syns_csv']
 
@@ -156,28 +216,22 @@ def load_data(data_params, max_len, vocab_size):
     if len(syns_path) > 0:
         synonyms = load_synonym_dict(syns_path)
 
-    # データをロード
-    full_dataset = []
-    with open(data_path, 'r', encoding="cp932") as f:
-        reader = csv.reader(f)
-        i = 0
-        for line in reader:
-            if len(line) > 0:
-                full_dataset.append(line)
-            i += 1
-
-    # ランダムな20%のデータを検査データにする
-    train_size = int(0.8 * len(full_dataset))
-    test_size = len(full_dataset) - train_size
-    train_dataset, test_dataset = torch.utils.data.random_split(
-        full_dataset, [train_size, test_size])
+    if not predict:
+        # ランダムな20%のデータを検査データにする
+        train_size = int(0.8 * len(full_dataset))
+        test_size = len(full_dataset) - train_size
+        train_dataset, test_dataset = torch.utils.data.random_split(
+            full_dataset, [train_size, test_size])
+    else:
+        # 予測時には全部検査データにする(基本1データしかない)
+        train_dataset = []
+        test_dataset = full_dataset
 
     # それぞれのデータをラベル(数値)と入力データ(文字列)に分解
     x_train_data = []
     y_train_data = []
     x_test_data = []
     y_test_data = []
-
     for line in train_dataset:
         if len(line) == 2 and len(line[0]) > 0 and len(line[1]) > 0:
             y_train_data.append(int(line[0]))
@@ -189,34 +243,69 @@ def load_data(data_params, max_len, vocab_size):
 
     # 入力データ(文字列)を形態素解析
     # 存在する全単語をwords配列に入れる
+    num_data = len(x_train_data) + len(x_test_data)
+    i = 0
+    orgs = [["<PAD>", "<START>", "<UNK>", '<EOS>']]
     words = [["<PAD>", "<START>", "<UNK>", '<EOS>']]
     train_words = []
     for line in x_train_data:
-        a = get_tokens(line, synonyms)
+        (a, o) = get_tokens(line, synonyms)
         words.append(a)
         train_words.append(a)
+        orgs.append(o)
+        # print(a)
+        i += 1
+        print(i, num_data)
     test_words = []
     for line in x_test_data:
-        a = get_tokens(line, synonyms)
+        (a, o) = get_tokens(line, synonyms)
         words.append(a)
         test_words.append(a)
+        orgs.append(o)
+        # print(a)
+        i += 1
+        print(i, num_data)
+
+    # 元の単語とのマッピング表をつくる
+    table = {}
+    i = 0
+    for line in words:
+        oline = orgs[i]
+        j = 0
+        for w in line:
+            table[w] = oline[j]
+            j += 1
+        i += 1
+    # print(table)
+    # exit()
 
     # 存在する全単語から辞書を作成
-    dictionary = get_dict(dict_path, words)
+    if not predict:
+        dictionary = get_dict(dict_path, words)
+    else:
+        dictionary = load_dict(dict_path)
     num_words = len(dictionary)
+
+    # predict = True
 
     # 辞書を使って形態素を数値化
     num_wpl = 0
     x_train = []
     for line in train_words:
-        a = get_word(dictionary, line)
+        (a, src) = get_word(dictionary, line)
+        if predict:
+            print(src)
         x_train.append(a)
         if len(a) > num_wpl:
             num_wpl = len(a)
     x_test = []
     for line in test_words:
-        a = get_word(dictionary, line)
+        (a, src) = get_word(dictionary, line)
+        if predict:
+            print(src)
         x_test.append(a)
+
+    # exit()
 
     x_train = np.array(x_train)
     x_test = np.array(x_test)
@@ -226,7 +315,7 @@ def load_data(data_params, max_len, vocab_size):
     print(num_words, 'words ->', vocab_size)
     print(num_wpl, 'words/line (max) ->', max_len)
 
-    return (x_train, y_train_data), (x_test, y_test_data), dictionary.token2id
+    return (x_train, y_train_data), (x_test, y_test_data), dictionary.token2id, table
 
 
 def load_label_data(dictname):
@@ -264,19 +353,18 @@ def load_data_from_file(vocab_size):
     return (data, label), (data, label), word_to_id
 
 
-def save_data_to_file(data_params):
-    (x_train, y_train), (x_test, y_test), word_to_id = load_data(
-        data_params, 2000, 20000)
-    np.savez('data.npz', x=x_train, y=y_train)
-    f = codecs.open('data.json', 'w', 'utf-8')
-    json.dump(word_to_id, f, ensure_ascii=False)
+# def save_data_to_file(data_params):
+#     (x_train, y_train), (x_test, y_test), word_to_id = load_data(
+#         data_params, 2000, 20000)
+#     np.savez('data.npz', x=x_train, y=y_train)
+#     f = codecs.open('data.json', 'w', 'utf-8')
+#     json.dump(word_to_id, f, ensure_ascii=False)
 
 
-def load_data_set(data_params, type, max_len, vocab_size, batch_size):
-
+def load_data_set(full_dataset, data_params, type, max_len, vocab_size, batch_size, predict=False):
     print('\nLoading data...')
-    train_set, test_set, word_to_id = load_data(
-        data_params, max_len, vocab_size)
+    train_set, test_set, word_to_id, word_to_word = load_data(full_dataset,
+        data_params, max_len, vocab_size, predict)
 
     word_to_id["<PAD>"] = 0
     word_to_id["<START>"] = 1
@@ -308,4 +396,4 @@ def load_data_set(data_params, type, max_len, vocab_size, batch_size):
     train_loader = data_utils.DataLoader(
         train_data, batch_size=batch_size, drop_last=True)
 
-    return train_loader, train_set, test_set, x_train_pad, x_test_pad, word_to_id
+    return train_loader, train_set, test_set, x_train_pad, x_test_pad, word_to_id, word_to_word
