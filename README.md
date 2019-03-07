@@ -13,6 +13,13 @@ https://github.com/kaushalshetty/Structured-Self-Attention
 
 ## 使い方
 
+### Install
+
+* NEologd対応版janomeが必要です。
+* 以下の手順でインストールできます。
+
+[neologd 辞書内包の janome パッケージをダウンロードできるようにしました（不定期更新）](https://medium.com/@mocobeta/neologd-%E8%BE%9E%E6%9B%B8%E5%86%85%E5%8C%85%E3%81%AE-janome-%E3%83%91%E3%83%83%E3%82%B1%E3%83%BC%E3%82%B8%E3%81%AE%E3%83%80%E3%82%A6%E3%83%B3%E3%83%AD%E3%83%BC%E3%83%89%E3%81%A7%E3%81%8D%E3%82%8B%E3%82%88%E3%81%86%E3%81%AB%E3%81%97%E3%81%BE%E3%81%97%E3%81%9F-%E4%B8%8D%E5%AE%9A%E6%9C%9F%E6%9B%B4%E6%96%B0-71611ab66415)
+
 ### Train
 
 * 入力データファイルのうち、ランダムに80%を選び、学習データとして用います。
