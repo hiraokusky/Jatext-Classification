@@ -86,7 +86,7 @@ class Predict:
         print("param:", self.params_set)
         print("model:", self.model_params)
 
-    def predict_attention(self, attention_model, wts, x_test_pad, word_to_id, count, filename):
+    def predict_attention(self, attention_model, wts, x_test_pad, word_to_id, word_to_word, count, filename):
         labels = load_label_data(self.data_params['labels_csv'])
 
         wts_add = torch.sum(wts, 1)
@@ -146,7 +146,7 @@ class Predict:
         #         break
         # print(full_dataset)
 
-        train_loader, train_set, test_set, x_train_pad, x_test_pad, word_to_id = load_data_set(
+        train_loader, train_set, test_set, x_train_pad, x_test_pad, word_to_id, word_to_word = load_data_set(
             full_dataset, self.data_params, 1, MAXLENGTH, self.model_params["vocab_size"], self.model_params['batch_size'], True)
 
         # Using pretrained embeddings
@@ -166,9 +166,15 @@ class Predict:
             torch.from_numpy(x_test_pad[:]).type(torch.LongTensor)))
         print(wts.size())
         res = self.predict_attention(
-            attention_model, wts, x_test_pad[:], word_to_id, count, filename='predict_attention')
+            attention_model, wts, x_test_pad[:], word_to_id, word_to_word, count, filename='predict_attention')
         return res
 
-# predict = Predict()
-# predict.init_model()
-# predict.do_predict()
+if __name__ == '__main__':
+    predict = Predict()
+    predict.init_model()
+    
+    while True:
+        inputstr = input('> ')
+        if len(inputstr) > 0:
+            res = predict.do_predict(inputstr, 10)
+            print(res)
