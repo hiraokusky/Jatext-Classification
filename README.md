@@ -31,7 +31,14 @@ python train.py --data_csv 入力データファイルのパス [--syns_csv 類�
 
 ### Predict
 
-T.B.D.
+* コマンドラインで入力したテキストから予測される分類結果を表示します。
+* 最大10個の予測結果を確度の高い順に表示します。
+
+```
+python predict.py --data_csv 入力データファイルのパス [--syns_csv 類義語辞書ファイルのパス] [--dict_txt キャッシュ辞書ファイルのパス]  [--labels_csv ラベルデータファイル]
+> 入力テキスト
+[ 予測結果1, ... ]
+```
 
 ### Visualize
 
