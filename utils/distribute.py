@@ -126,3 +126,17 @@ class JDistribution:
 
 # for k in words:
 #     print(k, corpus.model.wv[k])
+
+if __name__ == '__main__':
+    import sys
+    if len(sys.argv) > 1:
+        path_w = sys.argv[1]
+        text = sys.argv[2]
+
+    jd = JDistribution()
+    jd.load_model(path_w)
+
+    # 類義語チェックテスト
+    results = jd.get_synonyms(text)
+    for result in results:
+        print(result)
