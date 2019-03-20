@@ -1,8 +1,12 @@
+db/
+visualization/attention
 attention.html
 train_attention.html
 test_attention.html
 data.csv
 dict.txt
+run.py
+carte2diag.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

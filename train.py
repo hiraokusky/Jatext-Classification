@@ -14,8 +14,10 @@ import sys
 import json
 import csv
 import glob
+import re
 
 from input.data_loader import load_data_set, load_label_data
+from utils.distribute import JDistribution
 
 import argparse
 
@@ -83,7 +85,7 @@ else:
 if args.dict_txt != None and len(args.dict_txt) > 0:
     data_params['dict_txt'] = args.dict_txt
 else:
-    data_params['dict_txt'] = 'dict.txt'
+    data_params['dict_txt'] = 'db/dict.txt'
 
 params_set['verbose'] = args.verbose
 
@@ -176,75 +178,65 @@ def multiclass_classification(attention_model, train_loader, epochs=5, use_regul
     train(params_set, attention_model, train_loader, loss,
           optimizer, epochs, use_regularization, C, clip)
 
-
-MAXLENGTH = model_params['timesteps']
-
-# データをロード
-num = 10
-min_len = 200
-
+# 学習データロード
 data_path = data_params['data_csv']
 full_dataset = []
 with open(data_path, 'r', encoding="cp932") as f:
     reader = csv.reader(f)
     i = 0
     for line in reader:
-        if len(line) > 0 and len(line[1]) > min_len:
-            full_dataset.append(line)
-        else:
-            print(len(line[1]))
-        i += 1
-
-        # if i >= num:
-        #     break
+        full_dataset.append([line[0], line[1].split()])
 
 if do_train and classification_type == 'binary':
+    # 2値分類
 
     train_loader, x_test_pad, y_test, word_to_id, word_to_word = load_data_set(
-        full_dataset, data_params, 0, MAXLENGTH, model_params["vocab_size"], model_params['batch_size'])  # loading imdb dataset
+        full_dataset, data_params, 0, model_params['timesteps'], model_params["vocab_size"], model_params['batch_size'])  # loading imdb dataset
 
     if params_set["use_embeddings"]:
-        embeddings = load_glove_embeddings(
-            "glove/glove.6B.50d.txt", word_to_id, 50)
+        # embeddings = load_glove_embeddings(
+        #     "glove/glove.6B.50d.txt", word_to_id, 50)
+        jd = JDistribution()
+        dict_path = data_params['dict_txt']
+        embeddings = jd.load_embeddings(dict_path)
     else:
         embeddings = None
     # Can use pretrained embeddings by passing in the embeddings and setting the use_pretrained_embeddings=True
     attention_model = StructuredSelfAttention(batch_size=train_loader.batch_size, lstm_hid_dim=model_params['lstm_hidden_dimension'], d_a=model_params["d_a"], r=params_set["attention_hops"], vocab_size=len(
-        word_to_id), max_len=MAXLENGTH, type=0, n_classes=1, use_pretrained_embeddings=params_set["use_embeddings"], embeddings=embeddings)
+        word_to_id), max_len=model_params['timesteps'], type=0, n_classes=1, use_pretrained_embeddings=params_set["use_embeddings"], embeddings=embeddings)
 
     # Can set use_regularization=True for penalization and clip=True for gradient clipping
     binary_classfication(attention_model, train_loader=train_loader,
                          epochs=params_set["epochs"], use_regularization=params_set["use_regularization"], C=params_set["C"], clip=params_set["clip"])
     classified = True
-    #wts = get_activation_wts(binary_attention_model,Variable(torch.from_numpy(x_test_pad[:]).type(torch.LongTensor)))
-    #print("Attention weights for the testing data in binary classification are:",wts)
-
 
 if do_train and classification_type == 'multiclass':
+    # 多クラス分類
 
     train_loader, train_set, test_set, x_train_pad, x_test_pad, word_to_id, word_to_word = load_data_set(
-        full_dataset, data_params, 1, MAXLENGTH, model_params["vocab_size"], model_params['batch_size'])
+        full_dataset, data_params, 1, model_params['timesteps'], model_params["vocab_size"], model_params['batch_size'])
 
     # Using pretrained embeddings
     if params_set["use_embeddings"]:
-        embeddings = load_glove_embeddings(
-            "glove/glove.6B.50d.txt", word_to_id, 50)
+        # embeddings = load_glove_embeddings(
+        #     "glove/glove.6B.50d.txt", word_to_id, 50)
+        jd = JDistribution()
+        dict_path = data_params['dict_txt']
+        embeddings = jd.load_embeddings(dict_path)
     else:
         embeddings = None
     attention_model = StructuredSelfAttention(batch_size=train_loader.batch_size, lstm_hid_dim=model_params['lstm_hidden_dimension'], d_a=model_params["d_a"], r=params_set["attention_hops"], vocab_size=len(
-        word_to_id), max_len=MAXLENGTH, type=1, n_classes=model_params["num_classes"], use_pretrained_embeddings=params_set["use_embeddings"], embeddings=embeddings)
+        word_to_id), max_len=model_params['timesteps'], type=1, n_classes=model_params["num_classes"], use_pretrained_embeddings=params_set["use_embeddings"], embeddings=embeddings)
 
     # Using regularization and gradient clipping at 0.5 (currently unparameterized)
     multiclass_classification(attention_model, train_loader,
                               epochs=params_set["epochs"], use_regularization=params_set["use_regularization"], C=params_set["C"], clip=params_set["clip"])
     classified = True
 
-    #wts = get_activation_wts(multiclass_attention_model,Variable(torch.from_numpy(x_test_pad[:]).type(torch.LongTensor)))
-    #print("Attention weights for the data in multiclass classification are:",wts)
-
     torch.save(attention_model.state_dict(), PATH)
 
 if do_classify and classified:
+    # attention可視化＋検証
     print('\nVisualizing...')
 
     files = glob.glob("visualization/attention/*")

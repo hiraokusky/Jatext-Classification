@@ -77,7 +77,7 @@ def match_syns(s, synonyms):
 
 
 def is_separater(w):
-    return w == '。' # or w == '|' or w == '，' or w == ' '
+    return w in ['.','..','。'] # or w == '|' or w == '，' or w == ' '
 
 novalues = [
     'しない',
@@ -115,18 +115,27 @@ def get_tokens(line, synonyms):
         t = ''
         s = node.surface
         # print(node)
-        if is_negative(node.base_form):
+        if is_negative(node.surface):
             t = 'ない'
+        elif is_negative(node.base_form):
+            t = 'ない'
+        elif node.surface in [ 's','o','p','q','r','s','t' ]:
+            t = node.surface
         elif node.surface == ':':
             t = ':'
-        elif parts[1] in ['数']: # or parts[1] in ['固有名詞']:
+        elif parts[1] in ['数']:
             t = ''
+        elif parts[1] in ['固有名詞']:
+            t = ''
+            # t = node.surface
         elif part in ['名詞']:
             t = match_syns(node.surface, synonyms)
         elif part in ['動詞', '形容詞', '副詞']:
             t = match_syns(node.base_form, synonyms)
         elif parts[1] in ['空白']:
             t = '。'
+        else:
+            t = node.surface
         # elif part in ['接続詞']:
         #     t = '。'
         # elif part in ['助詞'] and parts[1] in ['接続助詞']:
@@ -173,8 +182,8 @@ def get_word(dictionary, line):
     1行のトークンリストをIDリストにする
     """
     # 2個以上出現した単語だけを利用
-    # 出現文書数≥指定値(3), 出現文書数/全文書数≤指定値(100%)
-    dictionary.filter_extremes(no_below=3, no_above=1.0)
+    # 出現文書数≥指定値(2), 出現文書数/全文書数≤指定値(100%)
+    dictionary.filter_extremes(no_below=2, no_above=1.0)
     vec = dictionary.doc2idx(line, unknown_word_index=2)
     # word_to_id["<PAD>"] = 0
     # word_to_id["<START>"] = 1
@@ -318,28 +327,6 @@ def load_data(full_dataset, data_params, max_len, vocab_size, predict=False):
     return (x_train, y_train_data), (x_test, y_test_data), dictionary.token2id, table
 
 
-def load_label_data(dictname):
-    """
-    ラベルをロードする
-    """
-    labels = []
-    with open(dictname, 'r', encoding="cp932") as f:
-        for line in f:
-            line = line.translate(str.maketrans({'\n': None, '"': None}))
-            ws = line.split(',')
-            labels.append(ws[0])
-    return labels
-
-
-def load_reuters_data(data_params, max_len, vocab_size):
-    INDEX_FROM = 3
-    train_set, test_set = reuters.load_data(
-        path="reuters.npz", num_words=vocab_size, skip_top=0, index_from=INDEX_FROM)
-    word_to_id = reuters.get_word_index(path="reuters_word_index.json")
-    word_to_id = {k: (v+3) for k, v in word_to_id.items()}
-    id_to_word = {value: key for key, value in word_to_id.items()}
-    return train_set, test_set, word_to_id
-
 
 def load_data_from_file(vocab_size):
     new_array = np.load('data.npz')
@@ -360,10 +347,125 @@ def load_data_from_file(vocab_size):
 #     f = codecs.open('data.json', 'w', 'utf-8')
 #     json.dump(word_to_id, f, ensure_ascii=False)
 
+def load_data2(full_dataset, data_params, max_len, vocab_size, predict=False):
+    dict_path = data_params['dict_txt']
+
+    if not predict:
+        # ランダムな20%のデータを検査データにする
+        train_size = int(0.8 * len(full_dataset))
+        test_size = len(full_dataset) - train_size
+        train_dataset, test_dataset = torch.utils.data.random_split(
+            full_dataset, [train_size, test_size])
+    else:
+        # 予測時には全部検査データにする(基本1データしかない)
+        train_dataset = []
+        test_dataset = full_dataset
+
+    # それぞれのデータをラベル(数値)と入力データ(文字列)に分解
+    x_train_data = []
+    y_train_data = []
+    x_test_data = []
+    y_test_data = []
+    for line in train_dataset:
+        if len(line) == 2 and len(line[0]) > 0 and len(line[1]) > 0:
+            y_train_data.append(int(line[0]))
+            x_train_data.append(line[1])
+    for line in test_dataset:
+        if len(line) == 2 and len(line[0]) > 0 and len(line[1]) > 0:
+            y_test_data.append(int(line[0]))
+            x_test_data.append(line[1])
+
+    # 入力データ(文字列)を形態素解析
+    # 存在する全単語をwords配列に入れる
+    num_data = len(x_train_data) + len(x_test_data)
+    i = 0
+    orgs = [["<PAD>", "<START>", "<UNK>", '<EOS>']]
+    words = [["<PAD>", "<START>", "<UNK>", '<EOS>']]
+    train_words = []
+    for line in x_train_data:
+        words.append(line)
+        train_words.append(line)
+        orgs.append(line)
+        # print(line)
+        i += 1
+        print(i, num_data)
+    test_words = []
+    for line in x_test_data:
+        words.append(line)
+        test_words.append(line)
+        orgs.append(line)
+        # print(a)
+        i += 1
+        print(i, num_data)
+
+    # 元の単語とのマッピング表をつくる
+    table = {}
+    i = 0
+    for line in words:
+        oline = orgs[i]
+        j = 0
+        for w in line:
+            table[w] = oline[j]
+            j += 1
+        i += 1
+    # print(table)
+    # exit()
+
+    # 存在する全単語から辞書を作成
+    if not predict:
+        dictionary = get_dict(dict_path, words)
+    else:
+        dictionary = load_dict(dict_path)
+    num_words = len(dictionary)
+
+    # predict = True
+
+    # 辞書を使って形態素を数値化
+    num_wpl = 0
+    x_train = []
+    for line in train_words:
+        (a, src) = get_word(dictionary, line)
+        if predict:
+            print(src)
+        x_train.append(a)
+        if len(a) > num_wpl:
+            num_wpl = len(a)
+    x_test = []
+    for line in test_words:
+        (a, src) = get_word(dictionary, line)
+        if predict:
+            print(src)
+        x_test.append(a)
+
+    # exit()
+
+    x_train = np.array(x_train)
+    x_test = np.array(x_test)
+    y_train_data = np.array(y_train_data)
+    y_test_data = np.array(y_test_data)
+
+    print(num_words, 'words ->', vocab_size)
+    print(num_wpl, 'words/line (max) ->', max_len)
+
+    return (x_train, y_train_data), (x_test, y_test_data), dictionary.token2id, table
+
+
+def load_label_data(dictname):
+    """
+    ラベルをロードする
+    """
+    labels = []
+    with open(dictname, 'r', encoding="cp932") as f:
+        for line in f:
+            line = line.translate(str.maketrans({'\n': None, '"': None}))
+            ws = line.split(',')
+            labels.append(ws[0])
+    return labels
+
 
 def load_data_set(full_dataset, data_params, type, max_len, vocab_size, batch_size, predict=False):
     print('\nLoading data...')
-    train_set, test_set, word_to_id, word_to_word = load_data(full_dataset,
+    train_set, test_set, word_to_id, word_to_word = load_data2(full_dataset,
         data_params, max_len, vocab_size, predict)
 
     word_to_id["<PAD>"] = 0
